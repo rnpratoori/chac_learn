@@ -61,7 +61,7 @@ def plot_nn_output_animation_3d(c_lin, eta_lin, all_nn_outputs, ylabel, output_p
         traceback.print_exc()
         print(f"Could not create {ylabel} 3D animation: {e}")
 
-def plot_simulation_data_3d(all_epochs_data, output_path, field='c'):
+def plot_simulation_data_3d(all_epochs_data, output_path, field='c', mesh_coords=None):
     """
     Creates interactive 3D Plotly plots of the simulation data.
     """
@@ -84,7 +84,15 @@ def plot_simulation_data_3d(all_epochs_data, output_path, field='c'):
             pred_idx, targ_idx = (1, 2) if field == 'c' else (3, 4)
             num_sim_timesteps = len(first_epoch_data)
             num_dofs = first_epoch_data[0][pred_idx].size
-            x_coords = np.arange(num_dofs)
+            
+            if mesh_coords is not None:
+                # Use the first coordinate (x) for the plot axis
+                # In 3D, this is a projection/slice representation
+                x_coords = mesh_coords[:, 0]
+                xaxis_title = 'X Coordinate'
+            else:
+                x_coords = np.arange(num_dofs)
+                xaxis_title = 'DOF index'
 
             for epoch_data in all_epochs_data:
                 t_coords = np.array([d[0] for d in epoch_data['data']])
@@ -110,7 +118,7 @@ def plot_simulation_data_3d(all_epochs_data, output_path, field='c'):
             for i in range(len(fig.data)): fig.data[i].visible = initial_visibility[i]
 
             fig.update_layout(sliders=sliders, title_text=f"{field.upper()} Simulation: {config['label']} (Epoch {all_epochs_data[0]['epoch']})",
-                              scene=dict(xaxis_title='DOF index', yaxis_title='Timestep', zaxis_title=field), template="plotly_white")
+                              scene=dict(xaxis_title=xaxis_title, yaxis_title='Timestep', zaxis_title=field), template="plotly_white")
             pio.write_html(fig, output_dir / config['filename'])
             print(f"Saved {field} 3D plot to {config['filename']}")
         except Exception as e:
@@ -146,10 +154,12 @@ def reproduce_plots(npz_path):
 
     if 'all_epochs_comparison_data' in data:
         all_data = data['all_epochs_comparison_data']
+        mesh_coords = data.get('mesh_coords')
+        
         if len(all_data) > 500:
             all_data = [all_data[i] for i in np.linspace(0, len(all_data)-1, 500, dtype=int)]
-        plot_simulation_data_3d(all_data, plot_output_dir / "sim_c", 'c')
-        plot_simulation_data_3d(all_data, plot_output_dir / "sim_eta", 'eta')
+        plot_simulation_data_3d(all_data, plot_output_dir / "sim_c", 'c', mesh_coords=mesh_coords)
+        plot_simulation_data_3d(all_data, plot_output_dir / "sim_eta", 'eta', mesh_coords=mesh_coords)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reproduce plots from CH-AC .npz output.")
