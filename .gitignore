@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.tox/
+.nox/
+.venv/
+venv/
+ENV/
+
+# Project-specific outputs
+reproduced_plots/
+wandb/
+*.pth
+*.pvd
+*.vtu
+*.npz
+*.png
+ch_learn_adjoint/
+
+# Allow specific simulation folders and their contents
+!ch_ac_*/
+!ch_ac_*/*.vtu
+!ch_ac_*/*.pvd
+!ch_ac_*/*.npz
+!ch_ac_*/*.png
+
+# Misc
+.DS_Store
+.ipynb_checkpoints/
