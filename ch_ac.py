@@ -45,34 +45,25 @@ v = TestFunction(W)
 c_test, mu_test, eta_test = split(v)
 
 # ---- Initial condition -------------------------------------------------------
-num_dofs = u.sub(0).dat.data.shape[0]
-ic = np.zeros((num_dofs, 3))
-
-# Extract DOF coordinates for all three axes
-x_coord = SpatialCoordinate(mesh)
-x_fn = Function(V).interpolate(x_coord[0])
-y_fn = Function(V).interpolate(x_coord[1])
-z_fn = Function(V).interpolate(x_coord[2])
-x_dofs = x_fn.dat.data_ro.copy()
-y_dofs = y_fn.dat.data_ro.copy()
-z_dofs = z_fn.dat.data_ro.copy()
+x, y, z = SpatialCoordinate(mesh)
 
 # 3D sinusoidal IC for c (concentration)
-ic[:, 0] = 0.5 + 0.2 * np.sin(np.pi * x_dofs) * np.sin(np.pi * y_dofs) * np.sin(np.pi * z_dofs)
-ic[:, 1] = 0.0  # Initial condition for mu
+# Use np.pi for the constant; sin is the UFL operator
+ic_c = 0.5 + 0.2 * sin(np.pi * x) * sin(np.pi * y) * sin(np.pi * z)
+u_.sub(0).interpolate(ic_c)
+
+# Initial condition for mu
+u_.sub(1).assign(0.0)
 
 # 3D spherical nucleus for eta (crystallinity)
-# Mirror the 1D logic: compute distance from domain centre, set eta=1 within radius r
 center = L_domain / 2.0
-nucleus_width_factor = 4.0
-r = lmbda_eta * nucleus_width_factor  # radius of nucleus
+r = lmbda_eta * 4.0  # radius of nucleus
+dist = sqrt((x - center)**2 + (y - center)**2 + (z - center)**2)
 
-dist = np.sqrt((x_dofs - center)**2 + (y_dofs - center)**2 + (z_dofs - center)**2)
-ic[:, 2] = np.where(dist <= r, 1.0, 0.0)
+# Use conditional(condition, true_value, false_value) for the step function
+ic_eta = conditional(le(dist, r), 1.0, 0.0)
+u_.sub(2).interpolate(ic_eta)
 
-u_.sub(0).dat.data[:] = ic[:, 0]  # c
-u_.sub(1).dat.data[:] = ic[:, 1]  # mu
-u_.sub(2).dat.data[:] = ic[:, 2]  # eta
 u.assign(u_)
 
 # ---- Weak form --------------------------------------------------------------
