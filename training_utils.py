@@ -44,8 +44,11 @@ def parse_arguments():
                         help='Enable profiling mode (reduces epochs to 2).')
     parser.add_argument('--cpu', action='store_true',
                         help='Force usage of CPU for PyTorch even if CUDA is available.')
-    parser.add_argument('--truncation-modes', type=int, default=0,
-                        help='Number of FFT modes to use in loss calculation (0 for all).')
+    # Mesh parameters (2D — always a square RectangleMesh)
+    parser.add_argument('--N', type=int, default=100,
+                        help='Number of mesh cells per axis (RectangleMesh(N, N, L, L)).')
+    parser.add_argument('--L', type=float, default=1.0,
+                        help='Domain length per axis.')
     parser.add_argument('--eta-loss-weight', type=float, default=1.0,
                         help='Weight for the crystallinity (eta) loss term relative to concentration (c) loss.')
     parser.add_argument('--integrability-weight', type=float, default=1.0,
@@ -76,7 +79,7 @@ def parse_arguments():
                         help='Mobility parameter.')
     parser.add_argument('--lmbda-eta', type=float, default=5e-2,
                         help='Interface width parameter for eta.')
-    parser.add_argument('--L', type=float, default=-100.0,
+    parser.add_argument('--L-kinetic', type=float, default=-100.0,
                         help='Kinetic coefficient for Allen-Cahn.')
     parser.add_argument('--data-index', type=int, default=1,
                         help='Index of the reference data directory (e.g., 1 for ch_ac_1).')
@@ -195,7 +198,8 @@ def initialize_training(args, model, device, output_dir, checkpoint_filename="ch
         
         if resumed and args.resume_lr is not None:
             config["resume_lr"] = args.resume_lr
-        config["truncation_modes"] = args.truncation_modes
+        config["N"] = args.N
+        config["L"] = args.L
         config["eta_loss_weight"] = args.eta_loss_weight
         config["integrability_weight"] = args.integrability_weight
         config["integrability_start_epoch"] = args.integrability_start_epoch

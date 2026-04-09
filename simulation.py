@@ -8,6 +8,7 @@ class CHSolver:
     """
     Reusable Cahn-Hilliard Allen-Cahn solver that builds forms once and reuses the solver object.
     This eliminates the UFL expression rebuilding overhead.
+    Works in any spatial dimension (1D, 2D, 3D) — all UFL forms are dimension-agnostic.
     """
     
     def __init__(self, W, dt, M, lmbda, lmbda_eta=5e-2, L=-100.0):
@@ -46,6 +47,7 @@ class CHSolver:
         self.dfdeta_f = Function(V, name="dfdeta")
         
         # Build form ONCE using the structure from ch_ac.py
+        # All forms use dimension-agnostic UFL operators (inner, dot, grad, dx)
         F0 = (inner(c, c_test) - inner(c_, c_test)) * dx + \
              (dt/2) * M * dot(grad(mu + mu_), grad(c_test)) * dx
         
@@ -69,7 +71,7 @@ class CHSolver:
         problem = NonlinearVariationalProblem(F, self.u)
         self.solver = NonlinearVariationalSolver(problem, solver_parameters=solver_parameters)
         
-        print("CHSolver initialized - forms built once, solver ready for reuse")
+        print("CHSolver initialized - forms built once, solver ready for reuse", flush=True)
     
     def solve_step(self, u_old, dfdc_f, dfdeta_f, u_target):
         """
@@ -125,45 +127,47 @@ def solve_one_step(u_old, dfdc_f, u, c, mu, c_test, mu_test, dt, M, lmbda):
     return u
 
 def load_target_data(num_timesteps, V, comm=None, rank=None, data_index=1):
-    print(f"Loading target from PVD (pyvista) using index {data_index}...")
+    """
+    Load target data from VTK files produced by ch_ac.py.
+
+    Because both ch_ac.py and learn_dfdc.py use the exact same RectangleMesh,
+    the .vtu point ordering is guaranteed to match the Firedrake DOF ordering,
+    so data can be assigned directly without any coordinate remapping.
+
+    A mesh-size assertion is run once on the first file to catch any
+    accidental mesh mismatch early.
+    """
+    print(f"Loading target from PVD (pyvista) using index {data_index}...", flush=True)
     c_target_list = []
     eta_target_list = []
-    
-    # Pre-compute local-to-global index mapping based on coordinates
-    # This is necessary for parallel execution where each rank only owns a part of the mesh
-    x = SpatialCoordinate(V.mesh())
-    # Interpolate x coordinate onto V
-    x_fn = Function(V).interpolate(x[0])
-    x_local = x_fn.dat.data_ro
-    
-    # Assuming uniform mesh on [0, 1] with 100 cells (matches problem setup in ch_ac.py)
-    L = 1.0
-    N = 100
-    dx = L / N
-    
-    # Map coordinates to indices: index = round(x / dx)
-    # We use rint to round to nearest integer
-    indices = np.rint(x_local / dx).astype(int)
-    
-    # Clip indices to ensure they are within bounds (0 to 100 inclusive -> 101 points)
-    # The global data has 101 points
-    indices = np.clip(indices, 0, 100)
+
+    # One-time mesh equality check on the first timestep file
+    first_reader = pv.get_reader(f"ch_ac_{data_index}/ch_ac_{data_index}_0.vtu")
+    first_data = first_reader.read()
+    n_vtu_points = first_data.n_points
+    n_dofs = V.dof_count
+    assert n_vtu_points == n_dofs, (
+        f"Mesh mismatch: .vtu file has {n_vtu_points} points but the Firedrake "
+        f"function space has {n_dofs} DOFs. Ensure both ch_ac.py and learn_dfdc.py "
+        f"use the same RectangleMesh(N, N, L, L)."
+    )
+    print(f"Mesh check passed: {n_dofs} DOFs match .vtu point count.", flush=True)
 
     for i in range(num_timesteps):
         reader = pv.get_reader(f"ch_ac_{data_index}/ch_ac_{data_index}_{i}.vtu")
         data = reader.read()
-        
-        c_arr_global = data.point_data["Volume Fraction"].astype(np.float64)
-        eta_arr_global = data.point_data["Crystallinity"].astype(np.float64)
+
+        c_arr = data.point_data["Volume Fraction"].astype(np.float64)
+        eta_arr = data.point_data["Crystallinity"].astype(np.float64)
 
         f_c = Function(V, name=f"target_c_{i}")
         f_eta = Function(V, name=f"target_eta_{i}")
-        
-        # Assign local data using the computed indices
-        f_c.dat.data[:] = c_arr_global[indices]
-        f_eta.dat.data[:] = eta_arr_global[indices]
-        
+
+        # Direct assignment — same mesh topology guarantees index correspondence
+        f_c.dat.data[:] = c_arr
+        f_eta.dat.data[:] = eta_arr
+
         c_target_list.append(f_c)
         eta_target_list.append(f_eta)
-        
+
     return c_target_list, eta_target_list, None

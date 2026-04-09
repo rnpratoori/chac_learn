@@ -31,42 +31,7 @@ def plot_nn_output_vs_c(net, device, ylabel, title, eta_val=0.0, output_idx=0):
         return None
 
 
-def plot_combined_final_timestep(preds_collection, epochs_collection, target_final_global, field='c'):
-    """
-    Creates a combined plot showing the final-timestep predictions from several epochs against the ground truth.
-    field: 'c' or 'eta'
-    """
-    if len(preds_collection) > 0:
-        try:
-            fig = go.Figure()
-            # Extract data based on field
-            if isinstance(preds_collection[0], dict):
-                first_pred = preds_collection[0][field]
-            else:
-                first_pred = preds_collection[0]
-                
-            x = np.arange(first_pred.size)
-            
-            for item, ep in zip(preds_collection, epochs_collection):
-                arr = item[field] if isinstance(item, dict) else item
-                fig.add_trace(go.Scatter(x=x, y=arr, mode='lines', name=f'Pred (ep {ep})', line=dict(width=1), opacity=0.9))
-
-            if target_final_global is not None:
-                targ_arr = target_final_global[field] if isinstance(target_final_global, dict) else target_final_global
-                fig.add_trace(go.Scatter(x=x, y=targ_arr, mode='lines', name='Ground truth (final time)', line=dict(color='black', width=2)))
-
-            fig.update_layout(
-                title=f"Final timestep ({field}): predictions (multiple epochs) vs ground truth",
-                xaxis_title="DOF index",
-                yaxis_title=field,
-                template="plotly_white",
-                legend=dict(font=dict(size=10))
-            )
-            return fig
-        except Exception as e:
-            print(f"Could not create combined final-timestep plot for {field}: {e}")
-            return None
-    return None
+# plot_combined_final_timestep removed — uses DOF index as x-axis, meaningless in 2D.
 
 
 def plot_loss_vs_epochs(epochs, losses, output_path, min_loss=None, losses_c=None, losses_eta=None, losses_int=None):
@@ -107,91 +72,14 @@ def plot_loss_vs_epochs(epochs, losses, output_path, min_loss=None, losses_c=Non
         return None
 
 
-def plot_multi_timestep_comparison_2d(epoch, comparison_data, field='c', title=None):
-    """
-    Creates a 2D Plotly figure with predictions and targets at multiple timesteps.
-    field: 'c' or 'eta'
-    """
-    if not comparison_data:
-        return None
-    
-    fig = go.Figure()
-    colors = px.colors.qualitative.Plotly
-    
-    # Check if comparison_data has eta (5-tuple instead of 3-tuple)
-    has_eta = len(comparison_data[0]) == 5
-    
-    for i, data in enumerate(comparison_data):
-        if has_eta:
-            timestep, c_pred, c_targ, eta_pred, eta_targ = data
-            pred_np = c_pred if field == 'c' else eta_pred
-            target_np = c_targ if field == 'c' else eta_targ
-        else:
-            timestep, pred_np, target_np = data
-            
-        x = np.arange(pred_np.size)
-        color = colors[i % len(colors)]
-        
-        fig.add_trace(go.Scatter(x=x, y=pred_np, mode='lines', 
-                                 name=f'Pred (t={timestep + 1})', 
-                                 line=dict(color=color)))
-        fig.add_trace(go.Scatter(x=x, y=target_np, mode='lines', 
-                                 name=f'Targ (t={timestep + 1})', 
-                                 line=dict(color=color, dash='dash')))
+# plot_multi_timestep_comparison_2d commented out — DOF-index x-axis is 1D-specific;
+# no direct 2D replacement for now.
+#
+# def plot_multi_timestep_comparison_2d(epoch, comparison_data, field='c', title=None):
+#     ...
 
-    fig.update_layout(
-        title=title or f"Epoch {epoch} - 2D Multi-timestep Comparison ({field})",
-        xaxis_title="DOF index",
-        yaxis_title=field,
-        template="plotly_white",
-        legend=dict(font=dict(size=8), orientation="h")
-    )
-    return fig
-
-
-def plot_multi_timestep_comparison_3d(epoch, comparison_data, field='c', title=None):
-    """
-    Creates a 3D Plotly figure with predictions and targets as surfaces.
-    field: 'c' or 'eta'
-    """
-    if not comparison_data:
-        return None
-
-    # Check if comparison_data has eta
-    has_eta = len(comparison_data[0]) == 5
-    
-    if has_eta:
-        x_coords = np.arange(comparison_data[0][1].size if field == 'c' else comparison_data[0][3].size)
-    else:
-        x_coords = np.arange(comparison_data[0][1].size)
-        
-    t_coords = np.array([d[0] for d in comparison_data])
-    
-    if has_eta:
-        C_pred = np.array([d[1] if field == 'c' else d[3] for d in comparison_data])
-        C_targ = np.array([d[2] if field == 'c' else d[4] for d in comparison_data])
-    else:
-        C_pred = np.array([d[1] for d in comparison_data])
-        C_targ = np.array([d[2] for d in comparison_data])
-
-    fig = go.Figure()
-
-    # Prediction surface
-    fig.add_trace(go.Surface(x=x_coords, y=t_coords, z=C_pred, 
-                             name='Prediction', colorscale='Viridis', showscale=False, opacity=0.8))
-    
-    # Target surface
-    fig.add_trace(go.Surface(x=x_coords, y=t_coords, z=C_targ, 
-                             name='Target', colorscale='Hot', showscale=False, opacity=0.6))
-
-    fig.update_layout(
-        title=title or f"Epoch {epoch} - 3D Space-Time Comparison ({field})",
-        scene=dict(
-            xaxis_title='DOF Index',
-            yaxis_title='Timestep',
-            zaxis_title=field
-        ),
-        template="plotly_white",
-        margin=dict(l=0, r=0, b=0, t=40)
-    )
-    return fig
+# plot_multi_timestep_comparison_3d commented out — (DOF index, timestep, value) surface
+# is only meaningful in 1D; no direct 2D replacement for now.
+#
+# def plot_multi_timestep_comparison_3d(epoch, comparison_data, field='c', title=None):
+#     ...

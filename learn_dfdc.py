@@ -33,10 +33,10 @@ torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 
 
-def setup_problem(num_timesteps, data_index=1):
+def setup_problem(num_timesteps, data_index=1, N_mesh=100, L_domain=1.0):
     """Setup the problem: mesh, function spaces, and target data."""
-    # Create mesh and function spaces
-    mesh = IntervalMesh(100, 1)
+    # Create 2D mesh and function spaces (always square)
+    mesh = RectangleMesh(N_mesh, N_mesh, L_domain, L_domain)
     V = FunctionSpace(mesh, "Lagrange", 1)
     W = V * V * V
     
@@ -45,7 +45,7 @@ def setup_problem(num_timesteps, data_index=1):
     
     # Setup initial condition
     u_ic = Function(W, name="Initial_condition")
-    print("Setting initial condition from the first timestep of the target data.")
+    print("Setting initial condition from the first timestep of the target data.", flush=True)
     u_ic.sub(0).assign(c_target_list[0])
     u_ic.sub(1).assign(0.0)
     u_ic.sub(2).assign(eta_target_list[0])
@@ -59,23 +59,16 @@ def setup_problem(num_timesteps, data_index=1):
     return V, W, u_ic, u, c, mu, eta, c_test, mu_test, eta_test, c_target_list, eta_target_list
 
 
-def compute_loss_and_gradient(u_curr, target, device, truncation_modes=0, weight=1.0, sub_index=0):
-    """Compute FFT-based loss and its gradient."""
+def compute_loss_and_gradient(u_curr, target, device, weight=1.0, sub_index=0):
+    """Compute FFT-based loss and its gradient (no truncation)."""
     u_curr_np = u_curr.sub(sub_index).dat.data_ro
     target_np = target.dat.data_ro
     
     u_tensor = torch.tensor(u_curr_np, device=device, requires_grad=True)
     t_tensor = torch.tensor(target_np, device=device)
     
-    fft_u = torch.fft.fft(u_tensor)
-    fft_t = torch.fft.fft(t_tensor)
-    
-    if truncation_modes > 0:
-        # Zero out higher frequency modes
-        # This assumes the input is a 1D signal. For 2D/3D, more complex truncation is needed.
-        # Given the `mesh = IntervalMesh(200, 2)`, it's likely 1D.
-        fft_u[truncation_modes:-truncation_modes] = 0
-        fft_t[truncation_modes:-truncation_modes] = 0
+    fft_u = torch.fft.fftn(u_tensor)
+    fft_t = torch.fft.fftn(t_tensor)
     
     loss = 0.5 * torch.mean(torch.abs(fft_u - fft_t)**2)
     
@@ -86,7 +79,7 @@ def compute_loss_and_gradient(u_curr, target, device, truncation_modes=0, weight
 
 
 def train_epoch(epoch, num_epochs, model, optimizer, device, u_ic, u, c_target_list, eta_target_list, 
-                V, W, dt, M, lmbda, num_timesteps, vtk_out, ch_solver, truncation_modes, 
+                V, W, dt, M, lmbda, num_timesteps, vtk_out, ch_solver,
                 eta_loss_weight=1.0, integrability_weight=1.0, integrability_start_epoch=0, use_wandb=True):
     """Execute one training epoch."""
     # Clear previous tape
@@ -144,7 +137,6 @@ def train_epoch(epoch, num_epochs, model, optimizer, device, u_ic, u, c_target_l
         dfdeta_outputs.append(dfdeta_f)
         
         # Solve one timestep using CHSolver
-        # Note: solver_step will need to be updated to accept both!
         u_next = ch_solver.solve_step(u_curr, dfdc_f, dfdeta_f, u)
         u_curr.assign(u_next)
         
@@ -157,11 +149,11 @@ def train_epoch(epoch, num_epochs, model, optimizer, device, u_ic, u, c_target_l
         # --- LOSS CALCULATION ---
         # Loss on concentration (c)
         loss_c, grad_c_tensor = compute_loss_and_gradient(
-            u_curr, c_target_list[i], device, truncation_modes=truncation_modes, sub_index=0)
+            u_curr, c_target_list[i], device, sub_index=0)
         
         # Loss on crystallinity (eta)
         loss_eta, grad_eta_tensor = compute_loss_and_gradient(
-            u_curr, eta_target_list[i], device, truncation_modes=truncation_modes,
+            u_curr, eta_target_list[i], device,
             weight=eta_loss_weight, sub_index=2)
         
         # Inject gradients into Firedrake adjoint
@@ -275,10 +267,11 @@ def train_epoch(epoch, num_epochs, model, optimizer, device, u_ic, u, c_target_l
 def save_npz_data(output_dir, epoch, preds_collection, epochs_collection, 
                   target_final_global, all_epochs_comparison_data, 
                   epoch_losses, epoch_numbers, model, device, use_wandb, all_nn_outputs,
-                  chi, chi_ac, N1, N2, Weta, z, z0, T, dt, M, lmbda, lmbda_eta, L,
+                  chi, chi_ac, N1, N2, Weta, z, z0, T, dt, M, lmbda, lmbda_eta, L_kinetic,
+                  mesh_coords=None,
                   epoch_losses_c=None, epoch_losses_eta=None, epoch_losses_int=None):
     """Save post-processing data to .npz file."""
-    print(f"Saving .npz data at epoch {epoch}...")
+    print(f"Saving .npz data at epoch {epoch}...", flush=True)
     
     # Create 2D grid for c and eta (50x50 = 2500 points)
     n_points = 50
@@ -304,7 +297,7 @@ def save_npz_data(output_dir, epoch, preds_collection, epochs_collection,
     all_nn_outputs.append({'epoch': epoch, 'output': nn_output_reshaped})
     
     npz_path = output_dir / "post_processing_data.npz"
-    np.savez(npz_path,
+    save_dict = dict(
              preds_collection=np.array(preds_collection),
              epochs_collection=np.array(epochs_collection),
              target_final_global=target_final_global,
@@ -330,7 +323,13 @@ def save_npz_data(output_dir, epoch, preds_collection, epochs_collection,
              M=np.array(M),
              lmbda=np.array(lmbda),
              lmbda_eta=np.array(lmbda_eta),
-             L=np.array(L))
+             L=np.array(L_kinetic))
+    
+    # Save 2D mesh node coordinates for post-processing
+    if mesh_coords is not None:
+        save_dict['mesh_coords'] = mesh_coords
+    
+    np.savez(npz_path, **save_dict)
     
     if use_wandb:
         wandb.save(str(npz_path))
@@ -341,28 +340,29 @@ def main():
     
     # Override epochs if profiling
     if args.profile:
-        print("Profiling mode enabled: reducing epochs to 2")
+        print("Profiling mode enabled: reducing epochs to 2", flush=True)
         args.epochs = 2
     
     output_dir = setup_output_dir(args)
     device = setup_device(args)
     
     # Problem parameters
-    # Problem parameters
     dt = args.dt
-    # Enforce 100 timesteps as requested
     num_timesteps = 200
     T = num_timesteps * dt
     M = args.M
     lmbda = 5e-2
     
+    # Setup problem (2D RectangleMesh)
+    V, W, u_ic, u, c, mu, eta, c_test, mu_test, eta_test, c_target_list, eta_target_list = setup_problem(
+        num_timesteps, data_index=args.data_index, N_mesh=args.N, L_domain=args.L
+    )
     
-    # Setup problem
-    V, W, u_ic, u, c, mu, eta, c_test, mu_test, eta_test, c_target_list, eta_target_list = setup_problem(num_timesteps, data_index=args.data_index)
+    # Get mesh coordinates for post-processing (shape: (n_dofs, 2))
+    mesh_coords = V.mesh().coordinates.dat.data_ro.copy()
     
-    # Initialize implementation
-    # NOTE: ch_learn.py previously created ch_solver inside train(), moving it here and passing it down
-    ch_solver = CHSolver(W, dt, M, lmbda, lmbda_eta=args.lmbda_eta, L=args.L)
+    # Initialize solver
+    ch_solver = CHSolver(W, dt, M, lmbda, lmbda_eta=args.lmbda_eta, L=args.L_kinetic)
     
     # Create model
     model = FEDerivative()
@@ -383,7 +383,7 @@ def main():
     # Aim for at least 20 saves, but save at least every 100 epochs.
     base_freq = max(1, num_epochs // 20)
     save_and_plot_freq = min(base_freq, 100)
-    print(f"Data and plots will be saved every {save_and_plot_freq} epochs.")
+    print(f"Data and plots will be saved every {save_and_plot_freq} epochs.", flush=True)
 
     plot_loss_freq = save_and_plot_freq
     npz_save_freq = save_and_plot_freq
@@ -402,7 +402,7 @@ def main():
     # Resume NPZ data if needed
     npz_path = output_dir / "post_processing_data.npz"
     if start_epoch > 0 and npz_path.exists():
-        print(f"Resuming from checkpoint, loading existing .npz data from {npz_path}")
+        print(f"Resuming from checkpoint, loading existing .npz data from {npz_path}", flush=True)
         with np.load(npz_path, allow_pickle=True) as data:
             preds_collection = list(data.get('preds_collection', []))
             epochs_collection = list(data.get('epochs_collection', []))
@@ -424,12 +424,12 @@ def main():
     else:
         warmup_scheduler = None
 
-    print(f"Starting training for {num_epochs} epochs...")
+    print(f"Starting training for {num_epochs} epochs...", flush=True)
     
     for epoch in range(start_epoch, num_epochs):
         loss_epoch, loss_c_epoch, loss_eta_epoch, loss_int_epoch, elapsed_time, u_curr, processed_comparison_data = train_epoch(
             epoch, num_epochs, model, optimizer, device, u_ic, u, c_target_list, eta_target_list,
-            V, W, dt, M, lmbda, num_timesteps, vtk_out, ch_solver, args.truncation_modes,
+            V, W, dt, M, lmbda, num_timesteps, vtk_out, ch_solver,
             eta_loss_weight=args.eta_loss_weight, 
             integrability_weight=args.integrability_weight,
             integrability_start_epoch=args.integrability_start_epoch,
@@ -450,7 +450,7 @@ def main():
         lr_changed = scheduler is not None and current_lr != old_lr
 
         if lr_changed and args.scheduler != 'cosine':
-            print(f"Learning rate updated to {current_lr:.6e}")
+            print(f"Learning rate updated to {current_lr:.6e}", flush=True)
 
         # Store losses
         epoch_losses.append(loss_epoch)
@@ -468,10 +468,10 @@ def main():
 
         if loss_epoch < min_loss:
             min_loss = loss_epoch
-            print(f"Epoch {epoch+1}/{num_epochs} finished in {elapsed_time:.2f} s, J={loss_epoch:.6e} (c={loss_c_epoch:.6e}, η={loss_eta_epoch:.6e}, int={loss_int_epoch:.6e})")
-            print(f"New minimum loss: {min_loss:.6e}")
+            print(f"Epoch {epoch+1}/{num_epochs} finished in {elapsed_time:.2f} s, J={loss_epoch:.6e} (c={loss_c_epoch:.6e}, η={loss_eta_epoch:.6e}, int={loss_int_epoch:.6e})", flush=True)
+            print(f"New minimum loss: {min_loss:.6e}", flush=True)
             if lr_changed and args.scheduler == 'cosine':
-                print(f"Learning rate updated to {current_lr:.6e}")
+                print(f"Learning rate updated to {current_lr:.6e}", flush=True)
         
         # Checkpointing
         if (epoch + 1) % checkpoint_freq == 0 or epoch == num_epochs - 1:
@@ -501,11 +501,12 @@ def main():
                           target_final_global, all_epochs_comparison_data,
                           epoch_losses, epoch_numbers, model, device, use_wandb, all_nn_outputs,
                           args.chi, args.chi_ac, args.N1, args.N2, args.Weta, args.z, args.z0,
-                          args.T, args.dt, args.M, lmbda, args.lmbda_eta, args.L,
+                          args.T, args.dt, args.M, lmbda, args.lmbda_eta, args.L_kinetic,
+                          mesh_coords=mesh_coords,
                           epoch_losses_c=epoch_losses_c, epoch_losses_eta=epoch_losses_eta,
                           epoch_losses_int=epoch_losses_int)
 
-    print("Training finished.")
+    print("Training finished.", flush=True)
     if use_wandb:
         wandb.finish()
 
