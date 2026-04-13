@@ -10,8 +10,8 @@ rank = comm.rank
 lmbda = 5e-2
 chi_aa = 1.0
 chi_ac = 1.0
-N1 = 4
-N2 = 4
+N1 = 3
+N2 = 3
 M = 1
 Weta = 1
 z = 0.5
@@ -24,8 +24,8 @@ N_mesh = 100   # cells per axis
 L_domain = 1.0  # domain length per axis
 
 # Simulation parameters
-dt = 5e-5
-T = dt * 200
+dt = 1e-4   
+T = dt * 100
 outfile = VTKFile("ch_ac_1.pvd")
 
 # Create 2D mesh
@@ -47,9 +47,14 @@ c_test, mu_test, eta_test = split(v)
 # ---- Initial condition -------------------------------------------------------
 x, y = SpatialCoordinate(mesh)
 
-# 2D sinusoidal IC for c (concentration)
-ic_c = 0.5 + 0.2 * sin(np.pi * x) * sin(np.pi * y)
-u_.sub(0).interpolate(ic_c)
+# Random noise IC for c (concentration) around mean 0.5
+# This is the standard starting point for spinodal decomposition
+mean_c = 0.5
+noise_amplitude = 0.05
+# Use a fixed seed for reproducibility across runs if desired
+np.random.seed(42)
+c_noise = mean_c + noise_amplitude * (np.random.rand(V.dof_count) - 0.5)
+u_.sub(0).dat.data[:] = c_noise
 
 # Initial condition for mu
 u_.sub(1).assign(0.0)

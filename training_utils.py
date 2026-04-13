@@ -60,9 +60,9 @@ def parse_arguments():
                         help='Flory-Huggins interaction parameter chi.')
     parser.add_argument('--chi-ac', type=float, default=1.0,
                         help='Coupling parameter chi_ac.')
-    parser.add_argument('--N1', type=float, default=4.0,
+    parser.add_argument('--N1', type=float, default=3.0,
                         help='Degree of polymerization N1.')
-    parser.add_argument('--N2', type=float, default=4.0,
+    parser.add_argument('--N2', type=float, default=3.0,
                         help='Degree of polymerization N2.')
     parser.add_argument('--Weta', type=float, default=1.0,
                         help='Barrier height Weta.')
@@ -73,7 +73,7 @@ def parse_arguments():
     # Simulation parameters
     parser.add_argument('--T', type=float, default=1e-1,
                         help='Total simulation time.')
-    parser.add_argument('--dt', type=float, default=5e-5,
+    parser.add_argument('--dt', type=float, default=1e-4,
                         help='Time step size.')
     parser.add_argument('--M', type=float, default=1.0,
                         help='Mobility parameter.')
