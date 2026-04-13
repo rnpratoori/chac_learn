@@ -442,13 +442,66 @@ def main():
 
     print(f"Starting training for {num_epochs} epochs...", flush=True)
 
-    # Automatic selection of eta_loss_weight evaluation flag
+    # Automatic selection of eta_loss_weight based on initial neural network predictions
     if args.eta_loss_weight < 0:
-        print("Auto-weight is pending. Epoch 1 will run with eta_loss_weight = 1.0. The weight will be calculated and applied for all subsequent epochs.", flush=True)
-        auto_weight_pending = True
-        args.eta_loss_weight = 1.0
-    else:
-        auto_weight_pending = False
+        print("Auto-calculating eta-loss-weight through an initial calibration pass...", flush=True)
+        # Capture RNG states so that subsequent training ignores this probe run
+        torch_state = torch.get_rng_state()
+        cuda_state = torch.cuda.get_rng_state() if torch.cuda.is_available() else None
+        
+        c_loss_sum = 0.0
+        eta_loss_sum = 0.0
+        
+        u_base = u_ic.copy(deepcopy=True)
+        dfdc_f = Function(V)
+        dfdeta_f = Function(V)
+        
+        # Must put model in eval mode or at least no_grad to prevent tracking
+        model.eval()
+        with torch.no_grad():
+            for i in range(num_timesteps):
+                c_vec = u_base.sub(0).dat.data_ro.copy().astype(np.float64)
+                eta_vec = u_base.sub(2).dat.data_ro.copy().astype(np.float64)
+                c_tensor = torch.from_numpy(c_vec.reshape(-1, 1)).to(device).to(torch.float64)
+                eta_tensor = torch.from_numpy(eta_vec.reshape(-1, 1)).to(device).to(torch.float64)
+                
+                input_tensor = torch.cat([c_tensor, eta_tensor], dim=1)
+                preds_np = model(input_tensor).cpu().numpy()
+                dfdc_f.dat.data[:] = preds_np[:, 0]
+                dfdeta_f.dat.data[:] = preds_np[:, 1]
+                
+                u_next = ch_solver.solve_step(u_base, dfdc_f, dfdeta_f, u)
+                u_base.assign(u_next)
+                
+                _, l_c_t, _ = compute_loss_and_gradient(u_base, c_target_list[i], device, sub_index=0)
+                _, l_eta_t, _ = compute_loss_and_gradient(u_base, eta_target_list[i], device, sub_index=2)
+                c_loss_sum += l_c_t
+                eta_loss_sum += l_eta_t
+
+        # We must clear the Firedrake adjoint tape since we solved CH manually
+        get_working_tape().clear_tape()
+
+        ratio = c_loss_sum / eta_loss_sum
+        
+        # User requested arithmetic multiples of 10.
+        weight = float(round(ratio / 10.0) * 10.0)
+        # Ensure it's at least 10.0 to prevent zeroing out eta loss if ratio is < 5
+        if weight < 10.0:
+            weight = 10.0
+            
+        args.eta_loss_weight = weight
+        print(f"Calibration pass c_loss: {c_loss_sum:.4e}, eta_loss: {eta_loss_sum:.4e}, Exact Ratio: {ratio:.4f}")
+        print(f"Automatically set eta_loss_weight = {args.eta_loss_weight}", flush=True)
+        
+        # If wandb is initialized, update the config so it tracks the auto-calculated weight
+        if not args.no_wandb and wandb.run:
+            wandb.config.update({"eta_loss_weight": args.eta_loss_weight}, allow_val_change=True)
+            
+        # Restore RNG states
+        torch.set_rng_state(torch_state)
+        if cuda_state is not None:
+            torch.cuda.set_rng_state(cuda_state)
+        model.train()
     
     for epoch in range(start_epoch, num_epochs):
         (loss_w, loss_t, loss_c_t, loss_eta_w, loss_eta_t, 
@@ -462,26 +515,6 @@ def main():
             use_wandb=use_wandb,
             should_collect_data=True
         )
-        
-        if auto_weight_pending and epoch == start_epoch:
-            # We calculate this on the go by evaluating the raw losses returned by Epoch 1.
-            # Since loss_eta_t is unweighted and loss_c_t is unweighted, we compare them directly.
-            ratio = loss_c_t / loss_eta_t
-            
-            # User requested arithmetic multiples of 10.
-            weight = float(round(ratio / 10.0) * 10.0)
-            
-            # Ensure it's at least 10.0 to prevent zeroing out eta loss if ratio is < 5
-            if weight < 10.0:
-                weight = 10.0
-                
-            args.eta_loss_weight = weight
-            auto_weight_pending = False
-            print(f"---> On-the-go Auto-Weight: Epoch {epoch+1} finished. True c_loss: {loss_c_t:.4e}, True unweighted eta_loss: {loss_eta_t:.4e}. Exact Ratio: {ratio:.4f}. Automatically setting eta_loss_weight = {args.eta_loss_weight} for all subsequent epochs.", flush=True)
-            
-            # If wandb is initialized, update the config so it tracks the auto-calculated weight
-            if not args.no_wandb and wandb.run:
-                wandb.config.update({"eta_loss_weight": args.eta_loss_weight}, allow_val_change=True)
         
         old_lr = optimizer.param_groups[0]['lr']
         if scheduler is not None:
