@@ -49,8 +49,8 @@ def parse_arguments():
                         help='Number of mesh cells per axis (RectangleMesh(N, N, L, L)).')
     parser.add_argument('--L', type=float, default=1.0,
                         help='Domain length per axis.')
-    parser.add_argument('--eta-loss-weight', type=float, default=1.0,
-                        help='Weight for the crystallinity (eta) loss term relative to concentration (c) loss.')
+    parser.add_argument('--eta-loss-weight', type=float, default=-1.0,
+                        help='Weight for the crystallinity (eta) loss term relative to concentration (c) loss. Set to < 0 for automatic selection based on multiples of 10.')
     parser.add_argument('--integrability-weight', type=float, default=1.0,
                         help='Weight for the integrability constraint (mixed partials equality) in the loss.')
     parser.add_argument('--integrability-start-epoch', type=int, default=0,

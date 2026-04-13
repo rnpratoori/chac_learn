@@ -441,6 +441,43 @@ def main():
         warmup_scheduler = None
 
     print(f"Starting training for {num_epochs} epochs...", flush=True)
+
+    # Automatic selection of eta_loss_weight based on initial loss on u_ic
+    if args.eta_loss_weight < 0:
+        print("Auto-calculating eta-loss-weight based on baseline PDE diffusion...", flush=True)
+        c_loss_sum = 0.0
+        eta_loss_sum = 0.0
+        
+        # Simulate a pure forward pass with zero neural network predictions 
+        # to find the intrinsic variance/loss of the system
+        u_base = u_ic.copy(deepcopy=True)
+        zero_dfdc = Function(V)
+        zero_dfdeta = Function(V)
+        
+        for i in range(num_timesteps):
+            u_next = ch_solver.solve_step(u_base, zero_dfdc, zero_dfdeta, u)
+            u_base.assign(u_next)
+            
+            _, l_c_t, _ = compute_loss_and_gradient(u_base, c_target_list[i], device, sub_index=0)
+            _, l_eta_t, _ = compute_loss_and_gradient(u_base, eta_target_list[i], device, sub_index=2)
+            c_loss_sum += l_c_t
+            eta_loss_sum += l_eta_t
+            
+        ratio = c_loss_sum / eta_loss_sum
+        
+        # User requested arithmetic multiples of 10.
+        weight = float(round(ratio / 10.0) * 10.0)
+        # Ensure it's at least 10.0 to prevent zeroing out eta loss if ratio is < 5
+        if weight < 10.0:
+            weight = 10.0
+            
+        args.eta_loss_weight = weight
+        print(f"Baseline c_loss: {c_loss_sum:.4e}, eta_loss: {eta_loss_sum:.4e}, Exact Ratio: {ratio:.4f}")
+        print(f"Automatically set eta_loss_weight = {args.eta_loss_weight}", flush=True)
+        
+        # If wandb is initialized, update the config so it tracks the auto-calculated weight
+        if not args.no_wandb and wandb.run:
+            wandb.config.update({"eta_loss_weight": args.eta_loss_weight}, allow_val_change=True)
     
     for epoch in range(start_epoch, num_epochs):
         (loss_w, loss_t, loss_c_t, loss_eta_w, loss_eta_t, 
