@@ -1,0 +1,75 @@
+usage: learn_dfdc.py [-h] [--epochs EPOCHS] [--learning-rate LEARNING_RATE]
+                     [--resume-lr RESUME_LR] [--seed SEED] [--no-resume]
+                     [--no-wandb] [--no-scheduler]
+                     [--scheduler {cosine,none,plateau}]
+                     [--warmup-epochs WARMUP_EPOCHS] [--patience PATIENCE]
+                     [--factor FACTOR] [--output-dir OUTPUT_DIR] [--profile]
+                     [--cpu] [--N N] [--L L]
+                     [--eta-loss-weight ETA_LOSS_WEIGHT]
+                     [--integrability-weight INTEGRABILITY_WEIGHT]
+                     [--integrability-start-epoch INTEGRABILITY_START_EPOCH]
+                     [--chi CHI] [--chi-ac CHI_AC] [--N1 N1] [--N2 N2]
+                     [--Weta WETA] [--z Z] [--z0 Z0] [--T T] [--dt DT] [--M M]
+                     [--lmbda-eta LMBDA_ETA] [--L-kinetic L_KINETIC]
+                     [--data-index DATA_INDEX]
+
+Cahn-Hilliard learning script.
+
+options:
+  -h, --help            show this help message and exit
+  --epochs EPOCHS       Number of training epochs.
+  --learning-rate LEARNING_RATE
+                        Learning rate for optimizer.
+  --resume-lr RESUME_LR
+                        Learning rate to use when resuming from checkpoint. If
+                        not specified, uses --learning-rate value.
+  --seed SEED           Random seed for reproducibility.
+  --no-resume           Start training from scratch, ignoring checkpoints.
+  --no-wandb            Disable Weights & Biases logging.
+  --no-scheduler        DEPRECATED: Use --scheduler none instead. Disable
+                        learning rate scheduler.
+  --scheduler {cosine,none,plateau}
+                        Learning rate scheduler type.
+  --warmup-epochs WARMUP_EPOCHS
+                        Number of epochs for learning rate warm-up (only for
+                        cosine scheduler).
+  --patience PATIENCE   Patience for ReduceLROnPlateau scheduler.
+  --factor FACTOR       Factor for ReduceLROnPlateau scheduler.
+  --output-dir OUTPUT_DIR
+                        Output directory for results.
+  --profile             Enable profiling mode (reduces epochs to 2).
+  --cpu                 Force usage of CPU for PyTorch even if CUDA is
+                        available.
+  --N N                 Number of mesh cells per axis (RectangleMesh(N, N, L,
+                        L)).
+  --L L                 Domain length per axis.
+  --eta-loss-weight ETA_LOSS_WEIGHT
+                        Weight for the crystallinity (eta) loss term relative
+                        to concentration (c) loss.
+  --integrability-weight INTEGRABILITY_WEIGHT
+                        Weight for the integrability constraint (mixed
+                        partials equality) in the loss.
+  --integrability-start-epoch INTEGRABILITY_START_EPOCH
+                        Epoch at which to start adding the integrability
+                        regularizer.
+  --chi CHI             Flory-Huggins interaction parameter chi.
+  --chi-ac CHI_AC       Coupling parameter chi_ac.
+  --N1 N1               Degree of polymerization N1.
+  --N2 N2               Degree of polymerization N2.
+  --Weta WETA           Barrier height Weta.
+  --z Z                 Parameter z.
+  --z0 Z0               Parameter z0.
+  --T T                 Total simulation time.
+  --dt DT               Time step size.
+  --M M                 Mobility parameter.
+  --lmbda-eta LMBDA_ETA
+                        Interface width parameter for eta.
+  --L-kinetic L_KINETIC
+                        Kinetic coefficient for Allen-Cahn.
+  --data-index DATA_INDEX
+                        Index of the reference data directory (e.g., 1 for
+                        ch_ac_1).
+WARNING! There are options you set that were not used!
+WARNING! could be spelling mistake, etc!
+There is one unused database option. It is:
+Option left: name:--help (no value) source: command line

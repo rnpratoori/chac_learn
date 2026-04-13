@@ -1,0 +1,20 @@
+Profiling mode enabled: reducing epochs to 2
+Using PyTorch device: cpu
+Loading target from PVD (pyvista) using index 1...
+Mesh check passed: 10201 DOFs match .vtu point count.
+Setting initial condition from the first timestep of the target data.
+CHSolver initialized - forms built once, solver ready for reuse
+Using cosine annealing scheduler with 100 warm-up epochs.
+Loading checkpoint from ch_learn_dfdc.pth...
+Checkpoint loaded. Last completed epoch: 1499. Loss=4.712903e+02. Resuming at epoch 1500
+Resumed with learning rate: 0.0009519486364518679
+Data and plots will be saved every 1 epochs.
+Resuming from checkpoint, loading existing .npz data from post_processing_data.npz
+Starting training for 2 epochs...
+Training finished.
+WARNING! There are options you set that were not used!
+WARNING! could be spelling mistake, etc!
+There are 3 unused database options. They are:
+Option left: name:--cpu (no value) source: command line
+Option left: name:--no-wandb (no value) source: command line
+Option left: name:--profile (no value) source: command line
