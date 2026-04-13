@@ -88,8 +88,7 @@ def parse_arguments():
 def setup_device(args):
     """Setup PyTorch device (CUDA or CPU)."""
     if not args.cpu and torch.cuda.is_available():
-        device = torch.device("cpu")
-        # device = torch.device("cuda")
+        device = torch.device("cuda")
     else:
         device = torch.device("cpu")
     print(f"Using PyTorch device: {device}")
