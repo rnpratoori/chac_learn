@@ -347,10 +347,10 @@ def main():
     
     # Problem parameters
     dt = args.dt
-    num_timesteps = 100
-    T = num_timesteps * dt
+    T = args.T
+    num_timesteps = int(round(T / dt))
     M = args.M
-    lmbda = 5e-2
+    lmbda = args.lmbda
     
     # Setup problem (2D RectangleMesh)
     V, W, u_ic, u, c, mu, eta, c_test, mu_test, eta_test, c_target_list, eta_target_list = setup_problem(

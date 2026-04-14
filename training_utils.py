@@ -22,7 +22,7 @@ def parse_arguments():
     parser.add_argument('--resume-lr', type=float, default=None,
                         help='Learning rate to use when resuming from checkpoint. '
                              'If not specified, uses --learning-rate value.')
-    parser.add_argument('--seed', type=int, default=12, 
+    parser.add_argument('--seed', type=int, default=42, 
                         help='Random seed for reproducibility.')
     parser.add_argument('--no-resume', action='store_true', 
                         help='Start training from scratch, ignoring checkpoints.')
@@ -71,12 +71,14 @@ def parse_arguments():
     parser.add_argument('--z0', type=float, default=1.0,
                         help='Parameter z0.')
     # Simulation parameters
-    parser.add_argument('--T', type=float, default=1e-1,
+    parser.add_argument('--T', type=float, default=1e-2, 
                         help='Total simulation time.')
     parser.add_argument('--dt', type=float, default=1e-4,
                         help='Time step size.')
     parser.add_argument('--M', type=float, default=1.0,
                         help='Mobility parameter.')
+    parser.add_argument('--lmbda', type=float, default=5e-2,
+                        help='Interface width parameter for concentration (c).')
     parser.add_argument('--lmbda-eta', type=float, default=5e-2,
                         help='Interface width parameter for eta.')
     parser.add_argument('--L-kinetic', type=float, default=-100.0,
