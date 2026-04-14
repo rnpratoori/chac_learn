@@ -503,9 +503,9 @@ def main():
         
         # User requested arithmetic multiples of 10.
         weight = float(round(ratio / 10.0) * 10.0)
-        # Ensure it's at least 10.0 to prevent zeroing out eta loss if ratio is < 5
-        if weight < 10.0:
-            weight = 10.0
+        # Ensure it's at least 1.0 to prevent zeroing out eta loss if ratio is < 5
+        if weight < 1.0:
+            weight = 1.0
             
         args.eta_loss_weight = weight
         print(f"Calibration pass c_loss: {c_loss_sum:.4e}, eta_loss: {eta_loss_sum:.4e}, Exact Ratio: {ratio:.4f}")
