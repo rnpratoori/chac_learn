@@ -3,18 +3,16 @@ Cahn-Hilliard Learning Script
 Learns the free energy derivative using neural networks and adjoint methods.
 """
 
-from firedrake import *
-from firedrake.adjoint import *
 import os
-
-# Set threading limits to avoid conflicts with MPI
+# Set threading limits to avoid conflicts with MPI and library mismatches
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
+from firedrake import *
+from firedrake.adjoint import *
 import numpy as np
 import torch
-
 import time
 import wandb
 import matplotlib
