@@ -73,8 +73,10 @@ def compute_loss_and_gradient(u_curr, target, device, weight=1.0, sub_index=0):
     raw_loss = 0.5 * torch.mean(torch.abs(fft_u - fft_t)**2)
     weighted_loss = weight * raw_loss
     
-    weighted_loss.backward()
-    grad_u_tensor = u_tensor.grad
+    grad_u_tensor = None
+    if torch.is_grad_enabled():
+        weighted_loss.backward()
+        grad_u_tensor = u_tensor.grad
     
     return weighted_loss.item(), raw_loss.item(), grad_u_tensor
 
@@ -458,30 +460,46 @@ def main():
         
         # Must put model in eval mode or at least no_grad to prevent tracking
         model.eval()
-        with torch.no_grad():
-            for i in range(num_timesteps):
-                c_vec = u_base.sub(0).dat.data_ro.copy().astype(np.float64)
-                eta_vec = u_base.sub(2).dat.data_ro.copy().astype(np.float64)
-                c_tensor = torch.from_numpy(c_vec.reshape(-1, 1)).to(device).to(torch.float64)
-                eta_tensor = torch.from_numpy(eta_vec.reshape(-1, 1)).to(device).to(torch.float64)
-                
-                input_tensor = torch.cat([c_tensor, eta_tensor], dim=1)
-                preds_np = model(input_tensor).cpu().numpy()
-                dfdc_f.dat.data[:] = preds_np[:, 0]
-                dfdeta_f.dat.data[:] = preds_np[:, 1]
-                
-                u_next = ch_solver.solve_step(u_base, dfdc_f, dfdeta_f, u)
-                u_base.assign(u_next)
-                
-                _, l_c_t, _ = compute_loss_and_gradient(u_base, c_target_list[i], device, sub_index=0)
-                _, l_eta_t, _ = compute_loss_and_gradient(u_base, eta_target_list[i], device, sub_index=2)
-                c_loss_sum += l_c_t
-                eta_loss_sum += l_eta_t
+        
+        # Limit the calibration to the first N steps to save time
+        cal_steps = min(100, num_timesteps)
+        print(f"Running calibration pass for {cal_steps} timesteps (out of {num_timesteps})...", flush=True)
+        
+        pause_annotation()
+        try:
+            with torch.no_grad():
+                for i in range(cal_steps):
+                    c_vec = u_base.sub(0).dat.data_ro.copy().astype(np.float64)
+                    eta_vec = u_base.sub(2).dat.data_ro.copy().astype(np.float64)
+                    c_tensor = torch.from_numpy(c_vec.reshape(-1, 1)).to(device).to(torch.float64)
+                    eta_tensor = torch.from_numpy(eta_vec.reshape(-1, 1)).to(device).to(torch.float64)
+                    
+                    input_tensor = torch.cat([c_tensor, eta_tensor], dim=1)
+                    preds_np = model(input_tensor).cpu().numpy()
+                    dfdc_f.dat.data[:] = preds_np[:, 0]
+                    dfdeta_f.dat.data[:] = preds_np[:, 1]
+                    
+                    u_next = ch_solver.solve_step(u_base, dfdc_f, dfdeta_f, u)
+                    u_base.assign(u_next)
+                    
+                    _, l_c_t, _ = compute_loss_and_gradient(u_base, c_target_list[i], device, sub_index=0)
+                    _, l_eta_t, _ = compute_loss_and_gradient(u_base, eta_target_list[i], device, sub_index=2)
+                    c_loss_sum += l_c_t
+                    eta_loss_sum += l_eta_t
+                    
+                    if (i + 1) % 20 == 0 or (i + 1) == cal_steps:
+                        print(f"  [Calibration] Step {i+1}/{cal_steps} complete.", flush=True)
+        finally:
+            continue_annotation()
 
         # We must clear the Firedrake adjoint tape since we solved CH manually
         get_working_tape().clear_tape()
 
-        ratio = c_loss_sum / eta_loss_sum
+        if eta_loss_sum > 0:
+            ratio = c_loss_sum / eta_loss_sum
+        else:
+            ratio = 1.0  # Fallback if no eta loss is detected
+            print("  Warning: No eta loss detected during calibration. Using ratio 1.0.", flush=True)
         
         # User requested arithmetic multiples of 10.
         weight = float(round(ratio / 10.0) * 10.0)
