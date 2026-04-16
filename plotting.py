@@ -3,6 +3,59 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 import torch
+from scipy.integrate import cumulative_trapezoid
+
+def plot_reconstructed_free_energy(model, device, n_points=50):
+    """
+    Reconstructs the free energy potential f(c, eta) by integrating the 
+    predicted derivatives df/dc and df/deta.
+    """
+    try:
+        # Create grid
+        c_lin = np.linspace(0.001, 0.999, n_points) # Avoid exact 0/1 if log terms are present
+        eta_lin = np.linspace(0, 1, n_points)
+        C, ETA = np.meshgrid(c_lin, eta_lin)
+        
+        # Flatten for NN evaluation
+        c_flat = C.flatten().reshape(-1, 1)
+        eta_flat = ETA.flatten().reshape(-1, 1)
+        input_tensor = torch.from_numpy(np.hstack([c_flat, eta_flat])).to(device).to(torch.float64)
+        
+        model.eval()
+        with torch.no_grad():
+            preds = model(input_tensor).cpu().numpy()
+            
+        # Reshape derivatives back to grid
+        dfdc_grid = preds[:, 0].reshape(n_points, n_points)
+        dfdeta_grid = preds[:, 1].reshape(n_points, n_points)
+        
+        # Numerical Integration: f(c, eta) = \int df/dc dc + \int df/deta deta
+        # We integrate along c-axis first for the first row (eta=0)
+        f_c0 = cumulative_trapezoid(dfdc_grid[0, :], c_lin, initial=0)
+        
+        # Then integrate along eta-axis for every c
+        f_grid = np.zeros_like(dfdc_grid)
+        f_grid[0, :] = f_c0
+        
+        # Integrate df/deta along the columns (constant c)
+        for j in range(n_points):
+            f_grid[:, j] = cumulative_trapezoid(dfdeta_grid[:, j], eta_lin, initial=f_c0[j])
+            
+        # Create 3D Plot
+        fig = go.Figure(data=[go.Surface(x=c_lin, y=eta_lin, z=f_grid, colorscale='Viridis')])
+        fig.update_layout(
+            title="Recovered Free Energy Potential f(c, η)",
+            scene=dict(
+                xaxis_title="Concentration (c)",
+                yaxis_title="Crystallinity (η)",
+                zaxis_title="Free Energy (f)"
+            ),
+            template="plotly_white"
+        )
+        return fig
+    except Exception as e:
+        print(f"Could not reconstruct free energy: {e}")
+        return None
 
 def plot_nn_output_vs_c(net, device, ylabel, title, eta_val=0.0, output_idx=0):
     """
